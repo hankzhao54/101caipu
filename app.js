@@ -1,4 +1,4 @@
-const appVersion = "supabase5";
+const appVersion = "supabase6";
 const fallbackData = window.RECIPE_WIKI_DATA || { meta: {}, categories: [], recipes: [] };
 const supabaseSettings = window.RECIPE_WIKI_SUPABASE;
 const requireAuth = Boolean(supabaseSettings?.requireAuth);
@@ -240,6 +240,10 @@ function filteredRecipes() {
 function renderList() {
   const recipes = filteredRecipes();
   if (!recipes.some((recipe) => recipe.id === selectedId)) selectedId = recipes[0]?.id || appData.recipes[0]?.id;
+  if (loadingBackend) {
+    els.recipeList.innerHTML = "<p class=\"login-note\">Loading recipes from database...</p>";
+    return;
+  }
   if (!recipes.length) {
     els.recipeList.innerHTML = "<p class=\"login-note\">No recipes match the current filters.</p>";
     return;
@@ -597,18 +601,28 @@ async function loadRecipesFromSupabase() {
   if (!supabaseClient || loadingBackend || !currentUser) return;
   loadingBackend = true;
   updateSourceMeta("loading database");
+  let rows = [];
 
-  const { data: rows, error } = await withTimeout(
-    supabaseClient
-      .from("recipes")
-      .select("id, legacy_id, number, category, status, source, recipe_i18n(lang, title, ingredients, steps, notes)")
-      .order("number"),
-    "Recipe load",
-    15000
-  );
-  if (error) {
+  try {
+    const result = await withTimeout(
+      supabaseClient
+        .from("recipes")
+        .select("id, legacy_id, number, category, status, source, recipe_i18n(lang, title, ingredients, steps, notes)")
+        .order("number"),
+      "Recipe load",
+      8000
+    );
+    rows = result.data || [];
+    if (result.error) {
+      loadingBackend = false;
+      updateSourceMeta(`database unavailable: ${result.error.message}`);
+      render();
+      return;
+    }
+  } catch (error) {
     loadingBackend = false;
-    updateSourceMeta(`database unavailable: ${error.message}`);
+    updateSourceMeta(error.message || "recipe load failed");
+    render();
     return;
   }
 
@@ -620,16 +634,27 @@ async function loadRecipesFromSupabase() {
     return;
   }
 
-  const { data: versions } = await supabaseClient
-    .from("recipe_versions")
-    .select("recipe_id, change_summary, changed_by, created_at")
-    .order("created_at", { ascending: false });
+  let versions = [];
+  try {
+    const result = await withTimeout(
+      supabaseClient
+        .from("recipe_versions")
+        .select("recipe_id, change_summary, changed_by, created_at")
+        .order("created_at", { ascending: false }),
+      "History load",
+      6000
+    );
+    versions = result.data || [];
+  } catch (error) {
+    versions = [];
+    updateSourceMeta("history load skipped");
+  }
 
   backendReady = true;
   appData = {
     meta: { source: "Supabase", totalParagraphs: rows.length },
     categories: [...new Set(rows.map((row) => row.category).filter(Boolean))],
-    recipes: rows.map((row) => recipeFromRow(row, versions || [])),
+    recipes: rows.map((row) => recipeFromRow(row, versions)),
   };
   if (!appData.recipes.some((recipe) => recipe.id === selectedId)) selectedId = appData.recipes[0]?.id || null;
   loadingBackend = false;
