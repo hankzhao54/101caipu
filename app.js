@@ -84,6 +84,14 @@ let selectedId = appData.recipes[0]?.id || null;
 let backendReady = false;
 let loadingBackend = false;
 
+function withTimeout(promise, label, milliseconds = 12000) {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(`${label} timed out. Please refresh and try again.`)), milliseconds);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
+}
+
 function currentRole() {
   return currentProfile?.role || "viewer";
 }
@@ -317,16 +325,16 @@ async function handleLoginButton() {
 
 async function loadCurrentUser() {
   if (!supabaseClient) return;
-  const { data: sessionData } = await supabaseClient.auth.getSession();
+  const { data: sessionData } = await withTimeout(supabaseClient.auth.getSession(), "Session check");
   currentUser = sessionData.session?.user || null;
   currentProfile = null;
   if (!currentUser) return;
 
-  const { data: profile } = await supabaseClient
+  const { data: profile } = await withTimeout(supabaseClient
     .from("profiles")
     .select("id, display_name, role")
     .eq("id", currentUser.id)
-    .maybeSingle();
+    .maybeSingle(), "Profile load");
   currentProfile = profile || { id: currentUser.id, display_name: currentUser.email, role: "viewer" };
 }
 
@@ -345,25 +353,30 @@ async function saveLogin() {
 
   els.saveLogin.disabled = true;
   els.loginNote.textContent = "Signing in...";
-  let result = await supabaseClient.auth.signInWithPassword({ email, password });
-  if (result.error && /invalid|not found|credentials/i.test(result.error.message)) {
-    result = await supabaseClient.auth.signUp({
-      email,
-      password,
-      options: { data: { display_name: email.split("@")[0] } },
-    });
-  }
-  els.saveLogin.disabled = false;
+  try {
+    let result = await withTimeout(supabaseClient.auth.signInWithPassword({ email, password }), "Sign in");
+    if (result.error && /invalid|not found|credentials/i.test(result.error.message)) {
+      result = await withTimeout(supabaseClient.auth.signUp({
+        email,
+        password,
+        options: { data: { display_name: email.split("@")[0] } },
+      }), "Account creation");
+    }
 
-  if (result.error) {
-    els.loginNote.textContent = result.error.message;
-    return;
-  }
+    if (result.error) {
+      els.loginNote.textContent = result.error.message;
+      return;
+    }
 
-  await loadCurrentUser();
-  await loadRecipesFromSupabase();
-  closeModal(els.loginDialog);
-  render();
+    await loadCurrentUser();
+    closeModal(els.loginDialog);
+    render();
+    loadRecipesFromSupabase();
+  } catch (error) {
+    els.loginNote.textContent = error.message || "Sign in failed. Please refresh and try again.";
+  } finally {
+    els.saveLogin.disabled = false;
+  }
 }
 
 function openEditor() {
@@ -518,10 +531,14 @@ async function loadRecipesFromSupabase() {
   loadingBackend = true;
   updateSourceMeta("loading database");
 
-  const { data: rows, error } = await supabaseClient
-    .from("recipes")
-    .select("id, legacy_id, number, category, status, source, recipe_i18n(lang, title, ingredients, steps, notes)")
-    .order("number");
+  const { data: rows, error } = await withTimeout(
+    supabaseClient
+      .from("recipes")
+      .select("id, legacy_id, number, category, status, source, recipe_i18n(lang, title, ingredients, steps, notes)")
+      .order("number"),
+    "Recipe load",
+    15000
+  );
   if (error) {
     loadingBackend = false;
     updateSourceMeta(`database unavailable: ${error.message}`);
