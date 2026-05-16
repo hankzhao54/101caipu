@@ -130,8 +130,8 @@ function renderUser() {
   } else {
     els.userBadge.textContent = "Guest";
     els.loginButton.textContent = "Sign in";
-    els.editButton.disabled = true;
   }
+  els.editButton.disabled = false;
 }
 
 function renderFilters() {
