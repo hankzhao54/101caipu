@@ -1,4 +1,4 @@
-const appVersion = "supabase4";
+const appVersion = "supabase5";
 const fallbackData = window.RECIPE_WIKI_DATA || { meta: {}, categories: [], recipes: [] };
 const supabaseSettings = window.RECIPE_WIKI_SUPABASE;
 const requireAuth = Boolean(supabaseSettings?.requireAuth);
@@ -341,17 +341,8 @@ async function handleLoginButton() {
   openLogin();
 }
 
-async function loadCurrentUser() {
-  if (!supabaseClient) return;
-  let sessionData = { session: null };
-  try {
-    const result = await withTimeout(supabaseClient.auth.getSession(), "Session check", 5000);
-    sessionData = result.data || result;
-  } catch (error) {
-    updateSourceMeta("session check timed out");
-  }
-  currentUser = sessionData.session?.user || currentUser || null;
-  currentProfile = null;
+async function loadCurrentProfile() {
+  if (!supabaseClient || !currentUser) return;
   if (!currentUser) return;
 
   try {
@@ -401,7 +392,7 @@ async function saveLogin() {
     currentProfile = currentUser ? { id: currentUser.id, display_name: currentUser.email, role: "viewer" } : null;
     closeModal(els.loginDialog);
     render();
-    loadCurrentUser().then(render).catch(() => {});
+    loadCurrentProfile().then(render).catch(() => {});
     loadRecipesFromSupabase();
   } catch (error) {
     els.loginNote.textContent = error.message || "Sign in failed. Please refresh and try again.";
@@ -691,29 +682,29 @@ async function updateUserRole(event) {
   const role = select.value;
   const { error } = await supabaseClient.from("profiles").update({ role }).eq("id", id);
   els.usersNote.textContent = error ? `Could not update role: ${error.message}` : "Role updated.";
-  if (id === currentUser?.id) await loadCurrentUser();
+  if (id === currentUser?.id) await loadCurrentProfile();
   renderUser();
 }
 
 async function initBackend() {
   if (!supabaseClient) return;
-  try {
-    await loadCurrentUser();
-  } catch (error) {
-    updateSourceMeta(error.message || "session unavailable");
-  }
-  if (currentUser) {
-    await loadRecipesFromSupabase();
-  } else {
-    updateSourceMeta("please sign in");
-  }
-  supabaseClient.auth.onAuthStateChange(async () => {
-    try {
-      await loadCurrentUser();
-    } catch (error) {
-      updateSourceMeta(error.message || "session unavailable");
+  updateSourceMeta("please sign in");
+  supabaseClient.auth.onAuthStateChange((event, session) => {
+    if (event === "SIGNED_OUT") {
+      currentUser = null;
+      currentProfile = null;
+      appData = { meta: {}, categories: [], recipes: [] };
+      backendReady = false;
+      renderFilters();
+      render();
+      updateSourceMeta("please sign in");
+      return;
     }
-    if (currentUser) await loadRecipesFromSupabase();
+    if (event === "SIGNED_IN" && session?.user) {
+      currentUser = currentUser || session.user;
+      currentProfile = currentProfile || { id: session.user.id, display_name: session.user.email, role: "viewer" };
+      loadCurrentProfile().then(render).catch(() => {});
+    }
     render();
   });
 }
