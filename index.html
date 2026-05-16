@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>101 Bistro Recipe Wiki</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=supabase1" />
   </head>
   <body>
     <main class="shell">
@@ -177,18 +177,14 @@
           <button class="close-modal" data-close="loginDialog" type="button" aria-label="Close">x</button>
         </header>
         <label>
-          User name
-          <input id="loginName" placeholder="Chef, manager, translator..." />
+          Email
+          <input id="loginEmail" type="email" autocomplete="email" placeholder="name@101bistro.hu" />
         </label>
         <label>
-          Role
-          <select id="loginRole">
-            <option value="Kitchen">Kitchen</option>
-            <option value="Manager">Manager</option>
-            <option value="Translator">Translator</option>
-          </select>
+          Password
+          <input id="loginPassword" type="password" autocomplete="current-password" />
         </label>
-        <p class="login-note">This is a local sign-in for review notes and edit history. A secure multi-user login needs a backend service.</p>
+        <p id="loginNote" class="login-note">Use the account created in Supabase. If this is a new user, the app will try to create it.</p>
         <menu>
           <button data-close="loginDialog" type="button">Cancel</button>
           <button id="saveLogin" type="button">Sign in</button>
@@ -196,7 +192,14 @@
       </form>
     </div>
 
-    <script src="app-data.js"></script>
-    <script src="app.js"></script>
+    <script>
+      window.RECIPE_WIKI_SUPABASE = {
+        url: "https://satkvvupjjhyvekinmuu.supabase.co",
+        anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNhdGt2dnVwampoeXZla2lubXV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5NDgwMDMsImV4cCI6MjA5NDUyNDAwM30.bG3UbCSJ4tXV1XIcNluvpzZ9CStU63IxXk5ZD9Aq0Lk",
+        requireAuth: true
+      };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="app.js?v=supabase1"></script>
   </body>
 </html>
