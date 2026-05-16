@@ -1,4 +1,4 @@
-const appVersion = "supabase2";
+const appVersion = "supabase3";
 const fallbackData = window.RECIPE_WIKI_DATA || { meta: {}, categories: [], recipes: [] };
 const supabaseSettings = window.RECIPE_WIKI_SUPABASE;
 const requireAuth = Boolean(supabaseSettings?.requireAuth);
@@ -48,6 +48,8 @@ const els = {
   userBadge: document.querySelector("#userBadge"),
   loginButton: document.querySelector("#loginButton"),
   manageUsersButton: document.querySelector("#manageUsersButton"),
+  reviewButton: document.querySelector("#reviewButton"),
+  needsReviewButton: document.querySelector("#needsReviewButton"),
   editButton: document.querySelector("#editButton"),
   exportButton: document.querySelector("#exportButton"),
   editDialog: document.querySelector("#editDialog"),
@@ -102,6 +104,17 @@ function canEditRecipes() {
 
 function canManageUsers() {
   return userManagerRoles.has(currentRole());
+}
+
+function currentRecipe() {
+  return appData.recipes.find((item) => item.id === selectedId) || appData.recipes[0] || null;
+}
+
+function statusLabel(status) {
+  if (status === "reviewed") return "Reviewed";
+  if (status === "machine-translated") return "Machine translated";
+  if (status === "imported") return "Imported";
+  return "Needs review";
 }
 
 function cleanText(text) {
@@ -180,6 +193,10 @@ function renderUser() {
 
   els.editButton.disabled = !canEditRecipes();
   els.editButton.title = canEditRecipes() ? "" : "Ask an owner or manager to give this user edit access.";
+  const recipe = currentRecipe();
+  const canReview = canEditRecipes() && Boolean(recipe?.dbId || recipe);
+  els.reviewButton.disabled = !canReview || recipe?.status === "reviewed";
+  els.needsReviewButton.disabled = !canReview || recipe?.status === "needs_review";
   els.manageUsersButton.hidden = !canManageUsers();
 }
 
@@ -230,13 +247,13 @@ function renderList() {
   els.recipeList.innerHTML = recipes.map((recipe) => `
     <button class="recipe-item ${recipe.id === selectedId ? "active" : ""}" data-id="${recipe.id}" type="button">
       <strong>${recipe.number} ${recipeTitle(recipe)}</strong>
-      <span>${categoryLabel(recipe.category)} / ${recipe.status === "reviewed" ? "Reviewed" : "Needs review"}</span>
+      <span>${categoryLabel(recipe.category)} / ${statusLabel(recipe.status)}</span>
     </button>
   `).join("");
 }
 
 function renderDetail() {
-  const recipe = appData.recipes.find((item) => item.id === selectedId) || appData.recipes[0];
+  const recipe = currentRecipe();
   if (!recipe) {
     els.recipeTitle.textContent = currentUser ? "No recipe selected" : "Sign in required";
     els.recipeNumber.textContent = "-";
@@ -263,7 +280,8 @@ function renderDetail() {
   els.recipeTitle.textContent = recipeTitle(recipe);
   els.recipeNumber.textContent = recipe.number;
   els.recipeCategory.textContent = categoryLabel(recipe.category);
-  els.recipeStatus.textContent = recipe.status === "reviewed" ? "Reviewed" : "Needs review";
+  els.recipeStatus.textContent = statusLabel(recipe.status);
+  els.recipeStatus.dataset.status = recipe.status || "needs_review";
   els.recipePages.textContent = recipe.sourcePages?.join(", ") || "-";
   els.ingredientCount.textContent = `${ingredients.length} items`;
   els.historyCount.textContent = `${history.length} entries`;
@@ -479,6 +497,51 @@ async function saveEditor() {
   render();
 }
 
+async function setRecipeStatus(status) {
+  const recipe = currentRecipe();
+  if (!recipe || !canEditRecipes()) return;
+
+  const now = new Date().toISOString();
+  const summary = status === "reviewed" ? "Marked recipe as reviewed" : "Marked recipe as needs review";
+  els.reviewButton.disabled = true;
+  els.needsReviewButton.disabled = true;
+
+  if (backendReady && supabaseClient && recipe.dbId && currentUser) {
+    const { error: recipeError } = await supabaseClient
+      .from("recipes")
+      .update({ status, updated_at: now })
+      .eq("id", recipe.dbId);
+    if (recipeError) {
+      updateSourceMeta(`review update failed: ${recipeError.message}`);
+      renderUser();
+      return;
+    }
+
+    const { error: versionError } = await supabaseClient.from("recipe_versions").insert({
+      recipe_id: recipe.dbId,
+      changed_by: currentUser.id,
+      change_summary: summary,
+      snapshot: { status, source: "review-mode" },
+    });
+    if (versionError) {
+      updateSourceMeta(`history update failed: ${versionError.message}`);
+      renderUser();
+      return;
+    }
+
+    await loadRecipesFromSupabase();
+    updateSourceMeta(status === "reviewed" ? "reviewed" : "needs review");
+    return;
+  }
+
+  recipe.status = status;
+  recipe.history = [
+    { date: now.slice(0, 10), user: currentUser?.email || "Restaurant team", summary },
+    ...(recipe.history || []),
+  ];
+  render();
+}
+
 function showSaveError(message) {
   els.saveEdit.disabled = false;
   els.editSummary.value = `Save failed: ${message}`;
@@ -647,6 +710,8 @@ els.statusSelect.addEventListener("change", render);
 els.languageSelect.addEventListener("change", render);
 els.loginButton.addEventListener("click", handleLoginButton);
 els.manageUsersButton.addEventListener("click", openUsers);
+els.reviewButton.addEventListener("click", () => setRecipeStatus("reviewed"));
+els.needsReviewButton.addEventListener("click", () => setRecipeStatus("needs_review"));
 els.refreshUsers.addEventListener("click", loadUsers);
 els.usersList.addEventListener("change", updateUserRole);
 els.saveLogin.addEventListener("click", saveLogin);

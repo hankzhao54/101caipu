@@ -198,7 +198,20 @@ textarea {
   border-color: var(--accent);
 }
 
-#editButton:disabled {
+#reviewButton {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+}
+
+#needsReviewButton {
+  border-color: var(--gold);
+  color: #6f4b11;
+}
+
+#editButton:disabled,
+#reviewButton:disabled,
+#needsReviewButton:disabled {
   background: #ecefeb;
   border-color: var(--line);
   color: var(--muted);
@@ -224,6 +237,16 @@ textarea {
   display: grid;
   gap: 8px;
   padding: 14px;
+}
+
+#recipeStatus[data-status="reviewed"] {
+  color: var(--green);
+}
+
+#recipeStatus[data-status="needs_review"],
+#recipeStatus[data-status="machine-translated"],
+#recipeStatus[data-status="imported"] {
+  color: var(--gold);
 }
 
 .content-grid {
