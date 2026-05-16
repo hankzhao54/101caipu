@@ -1,4 +1,4 @@
-const appVersion = "supabase6";
+const appVersion = "supabase7";
 const fallbackData = window.RECIPE_WIKI_DATA || { meta: {}, categories: [], recipes: [] };
 const supabaseSettings = window.RECIPE_WIKI_SUPABASE;
 const requireAuth = Boolean(supabaseSettings?.requireAuth);
@@ -725,10 +725,11 @@ async function initBackend() {
       updateSourceMeta("please sign in");
       return;
     }
-    if (event === "SIGNED_IN" && session?.user) {
+    if (session?.user) {
       currentUser = currentUser || session.user;
       currentProfile = currentProfile || { id: session.user.id, display_name: session.user.email, role: "viewer" };
       loadCurrentProfile().then(render).catch(() => {});
+      loadRecipesFromSupabase();
     }
     render();
   });
@@ -764,3 +765,8 @@ document.querySelectorAll("[data-close]").forEach((button) => {
 renderFilters();
 render();
 initBackend();
+setTimeout(() => {
+  if (currentUser && !appData.recipes.length && !loadingBackend) {
+    loadRecipesFromSupabase();
+  }
+}, 1200);
