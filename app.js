@@ -220,7 +220,7 @@ function render() {
 function openLogin() {
   els.loginName.value = currentUser?.name || "";
   els.loginRole.value = currentUser?.role || "Kitchen";
-  els.loginDialog.showModal();
+  openModal(els.loginDialog);
 }
 
 function saveLogin() {
@@ -228,7 +228,7 @@ function saveLogin() {
   if (!name) return;
   currentUser = { name, role: els.loginRole.value, signedInAt: new Date().toISOString() };
   localStorage.setItem(userStoreKey, JSON.stringify(currentUser));
-  els.loginDialog.close();
+  closeModal(els.loginDialog);
   render();
 }
 
@@ -248,7 +248,7 @@ function openEditor() {
   els.editHungarianNotes.value = stepsFor(recipe, "hu").join("\n");
   els.editChineseNotes.value = stepsFor(recipe, "zh").join("\n");
   els.editSummary.value = "";
-  els.editDialog.showModal();
+  openModal(els.editDialog);
 }
 
 function saveEditor() {
@@ -281,8 +281,18 @@ function saveEditor() {
 
   overrides[recipe.id] = { ...(overrides[recipe.id] || {}), ...next };
   localStorage.setItem(storeKey, JSON.stringify(overrides));
-  els.editDialog.close();
+  closeModal(els.editDialog);
   render();
+}
+
+function openModal(modal) {
+  modal.hidden = false;
+  modal.classList.add("open");
+}
+
+function closeModal(modal) {
+  modal.classList.remove("open");
+  modal.hidden = true;
 }
 
 function exportData() {
@@ -311,6 +321,11 @@ els.saveLogin.addEventListener("click", saveLogin);
 els.editButton.addEventListener("click", openEditor);
 els.saveEdit.addEventListener("click", saveEditor);
 els.exportButton.addEventListener("click", exportData);
+document.querySelectorAll("[data-close]").forEach((button) => {
+  button.addEventListener("click", () => {
+    closeModal(document.querySelector(`#${button.dataset.close}`));
+  });
+});
 
 renderFilters();
 render();
