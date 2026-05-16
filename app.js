@@ -343,17 +343,28 @@ async function handleLoginButton() {
 
 async function loadCurrentUser() {
   if (!supabaseClient) return;
-  const { data: sessionData } = await withTimeout(supabaseClient.auth.getSession(), "Session check");
-  currentUser = sessionData.session?.user || null;
+  let sessionData = { session: null };
+  try {
+    const result = await withTimeout(supabaseClient.auth.getSession(), "Session check", 5000);
+    sessionData = result.data || result;
+  } catch (error) {
+    updateSourceMeta("session check timed out");
+  }
+  currentUser = sessionData.session?.user || currentUser || null;
   currentProfile = null;
   if (!currentUser) return;
 
-  const { data: profile } = await withTimeout(supabaseClient
-    .from("profiles")
-    .select("id, display_name, role")
-    .eq("id", currentUser.id)
-    .maybeSingle(), "Profile load");
-  currentProfile = profile || { id: currentUser.id, display_name: currentUser.email, role: "viewer" };
+  try {
+    const { data: profile } = await withTimeout(supabaseClient
+      .from("profiles")
+      .select("id, display_name, role")
+      .eq("id", currentUser.id)
+      .maybeSingle(), "Profile load", 8000);
+    currentProfile = profile || { id: currentUser.id, display_name: currentUser.email, role: "viewer" };
+  } catch (error) {
+    currentProfile = { id: currentUser.id, display_name: currentUser.email, role: "viewer" };
+    updateSourceMeta("profile load timed out, using viewer role");
+  }
 }
 
 async function saveLogin() {
@@ -386,6 +397,8 @@ async function saveLogin() {
       return;
     }
 
+    currentUser = result.data?.user || result.data?.session?.user || currentUser;
+    currentProfile = currentUser ? { id: currentUser.id, display_name: currentUser.email, role: "viewer" } : null;
     await loadCurrentUser();
     closeModal(els.loginDialog);
     render();
@@ -684,14 +697,22 @@ async function updateUserRole(event) {
 
 async function initBackend() {
   if (!supabaseClient) return;
-  await loadCurrentUser();
+  try {
+    await loadCurrentUser();
+  } catch (error) {
+    updateSourceMeta(error.message || "session unavailable");
+  }
   if (currentUser) {
     await loadRecipesFromSupabase();
   } else {
     updateSourceMeta("please sign in");
   }
   supabaseClient.auth.onAuthStateChange(async () => {
-    await loadCurrentUser();
+    try {
+      await loadCurrentUser();
+    } catch (error) {
+      updateSourceMeta(error.message || "session unavailable");
+    }
     if (currentUser) await loadRecipesFromSupabase();
     render();
   });
