@@ -47,6 +47,8 @@
             <h2 id="recipeTitle"></h2>
           </div>
           <div class="actions">
+            <span id="userBadge" class="user-badge"></span>
+            <button id="loginButton" type="button">Sign in</button>
             <button id="exportButton" type="button">Export data</button>
             <button id="editButton" type="button">Edit recipe</button>
           </div>
@@ -71,39 +73,43 @@
           </article>
         </div>
 
-        <div class="content-grid">
-          <section class="panel">
-            <div class="panel-head">
-              <h3>Ingredients</h3>
-              <span id="ingredientCount"></span>
-            </div>
-            <ul id="ingredientsList" class="clean-list"></ul>
-          </section>
-
-          <section class="panel">
-            <div class="panel-head">
-              <h3>Method</h3>
-            </div>
-            <ol id="methodList" class="steps"></ol>
-          </section>
-        </div>
-
         <section class="panel full">
           <div class="panel-head">
-            <h3>Translations</h3>
-            <span>English first, Hungarian source, Chinese support</span>
+            <h3>Ingredients</h3>
+            <span id="ingredientCount"></span>
           </div>
           <div class="translation-grid">
             <article>
-              <h4>English working version</h4>
+              <h4>English ingredients</h4>
+              <ul id="ingredientsList" class="clean-list"></ul>
+            </article>
+            <article>
+              <h4>Hungarian source ingredients</h4>
+              <ul id="ingredientsHuList" class="clean-list"></ul>
+            </article>
+            <article>
+              <h4>Chinese ingredients</h4>
+              <ul id="ingredientsZhList" class="clean-list"></ul>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel full">
+          <div class="panel-head">
+            <h3>Steps</h3>
+            <span>English, Hungarian source, Chinese translation</span>
+          </div>
+          <div class="translation-grid">
+            <article>
+              <h4>English steps</h4>
               <p id="englishText" class="source-text"></p>
             </article>
             <article>
-              <h4>Hungarian original</h4>
+              <h4>Hungarian original steps</h4>
               <p id="sourceText" class="source-text"></p>
             </article>
             <article>
-              <h4>Chinese translation</h4>
+              <h4>Chinese steps</h4>
               <p id="chineseText" class="source-text"></p>
             </article>
           </div>
@@ -142,15 +148,15 @@
           <textarea id="editIngredients" rows="7"></textarea>
         </label>
         <label>
-          English method, one step per line
+          English steps, one per line
           <textarea id="editMethod" rows="7"></textarea>
         </label>
         <label>
-          Hungarian notes or source corrections
+          Hungarian source steps or corrections
           <textarea id="editHungarianNotes" rows="5"></textarea>
         </label>
         <label>
-          Chinese notes
+          Chinese steps
           <textarea id="editChineseNotes" rows="5"></textarea>
         </label>
         <label>
@@ -160,6 +166,32 @@
         <menu>
           <button value="cancel">Cancel</button>
           <button id="saveEdit" value="default" type="button">Save changes</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="loginDialog">
+      <form method="dialog" class="editor">
+        <header>
+          <h3>Sign in</h3>
+          <button value="cancel" type="submit" aria-label="Close">x</button>
+        </header>
+        <label>
+          User name
+          <input id="loginName" placeholder="Chef, manager, translator..." />
+        </label>
+        <label>
+          Role
+          <select id="loginRole">
+            <option value="Kitchen">Kitchen</option>
+            <option value="Manager">Manager</option>
+            <option value="Translator">Translator</option>
+          </select>
+        </label>
+        <p class="login-note">This is a local sign-in for review notes and edit history. A secure multi-user login needs a backend service.</p>
+        <menu>
+          <button value="cancel">Cancel</button>
+          <button id="saveLogin" value="default" type="button">Sign in</button>
         </menu>
       </form>
     </dialog>
