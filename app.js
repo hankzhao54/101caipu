@@ -1,4 +1,4 @@
-const appVersion = "supabase3";
+const appVersion = "supabase4";
 const fallbackData = window.RECIPE_WIKI_DATA || { meta: {}, categories: [], recipes: [] };
 const supabaseSettings = window.RECIPE_WIKI_SUPABASE;
 const requireAuth = Boolean(supabaseSettings?.requireAuth);
@@ -397,11 +397,11 @@ async function saveLogin() {
       return;
     }
 
-    currentUser = result.data?.user || result.data?.session?.user || currentUser;
+    currentUser = result.data?.user || result.data?.session?.user || { email, id: result.data?.session?.user?.id };
     currentProfile = currentUser ? { id: currentUser.id, display_name: currentUser.email, role: "viewer" } : null;
-    await loadCurrentUser();
     closeModal(els.loginDialog);
     render();
+    loadCurrentUser().then(render).catch(() => {});
     loadRecipesFromSupabase();
   } catch (error) {
     els.loginNote.textContent = error.message || "Sign in failed. Please refresh and try again.";
