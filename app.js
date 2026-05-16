@@ -1,4 +1,4 @@
-const appVersion = "supabase1";
+const appVersion = "supabase2";
 const fallbackData = window.RECIPE_WIKI_DATA || { meta: {}, categories: [], recipes: [] };
 const supabaseSettings = window.RECIPE_WIKI_SUPABASE;
 const requireAuth = Boolean(supabaseSettings?.requireAuth);
@@ -8,23 +8,27 @@ const supabaseClient =
     : null;
 
 const categoryNames = {
-  Stocks: ["Stocks", "高汤"],
-  Sauces: ["Sauces", "酱汁"],
-  Prep: ["Prep", "预处理"],
-  "Bakery and sweets": ["Bakery and sweets", "甜点和烘焙"],
-  Dumplings: ["Dumplings", "饺子"],
-  "Ferments and pickles": ["Ferments and pickles", "发酵和腌制"],
-  Cakes: ["Cakes", "糕点"],
-  Noodles: ["Noodles", "面条"],
-  "Spices and oils": ["Spices and oils", "香料和油"],
-  "Nuts and garnish": ["Nuts and garnish", "坚果和配料"],
+  Stocks: ["Stocks", "\u9ad8\u6c64"],
+  Sauces: ["Sauces", "\u9171\u6c41"],
+  Prep: ["Prep", "\u9884\u5904\u7406"],
+  "Bakery and sweets": ["Bakery and sweets", "\u751c\u70b9\u548c\u70d8\u7119"],
+  Dumplings: ["Dumplings", "\u997a\u5b50"],
+  "Ferments and pickles": ["Ferments and pickles", "\u53d1\u9175\u548c\u814c\u5236"],
+  Cakes: ["Cakes", "\u7cd5\u70b9"],
+  Noodles: ["Noodles", "\u9762\u6761"],
+  "Spices and oils": ["Spices and oils", "\u9999\u6599\u548c\u6cb9"],
+  "Nuts and garnish": ["Nuts and garnish", "\u575a\u679c\u548c\u914d\u6599"],
 };
+
+const editableRoles = new Set(["owner", "manager", "kitchen", "translator"]);
+const userManagerRoles = new Set(["owner", "manager"]);
 
 const els = {
   recipeCount: document.querySelector("#recipeCount"),
   searchInput: document.querySelector("#searchInput"),
   languageSelect: document.querySelector("#languageSelect"),
   categorySelect: document.querySelector("#categorySelect"),
+  statusSelect: document.querySelector("#statusSelect"),
   recipeList: document.querySelector("#recipeList"),
   sourceMeta: document.querySelector("#sourceMeta"),
   recipeTitle: document.querySelector("#recipeTitle"),
@@ -43,10 +47,12 @@ const els = {
   historyList: document.querySelector("#historyList"),
   userBadge: document.querySelector("#userBadge"),
   loginButton: document.querySelector("#loginButton"),
+  manageUsersButton: document.querySelector("#manageUsersButton"),
   editButton: document.querySelector("#editButton"),
   exportButton: document.querySelector("#exportButton"),
   editDialog: document.querySelector("#editDialog"),
   loginDialog: document.querySelector("#loginDialog"),
+  usersDialog: document.querySelector("#usersDialog"),
   loginEmail: document.querySelector("#loginEmail"),
   loginPassword: document.querySelector("#loginPassword"),
   loginNote: document.querySelector("#loginNote"),
@@ -55,11 +61,16 @@ const els = {
   editTitleHu: document.querySelector("#editTitleHu"),
   editTitleEn: document.querySelector("#editTitleEn"),
   editIngredients: document.querySelector("#editIngredients"),
+  editIngredientsHu: document.querySelector("#editIngredientsHu"),
+  editIngredientsZh: document.querySelector("#editIngredientsZh"),
   editMethod: document.querySelector("#editMethod"),
   editHungarianNotes: document.querySelector("#editHungarianNotes"),
   editChineseNotes: document.querySelector("#editChineseNotes"),
   editSummary: document.querySelector("#editSummary"),
   saveEdit: document.querySelector("#saveEdit"),
+  usersList: document.querySelector("#usersList"),
+  usersNote: document.querySelector("#usersNote"),
+  refreshUsers: document.querySelector("#refreshUsers"),
 };
 
 let appData = {
@@ -73,11 +84,27 @@ let selectedId = appData.recipes[0]?.id || null;
 let backendReady = false;
 let loadingBackend = false;
 
+function currentRole() {
+  return currentProfile?.role || "viewer";
+}
+
+function canEditRecipes() {
+  return editableRoles.has(currentRole());
+}
+
+function canManageUsers() {
+  return userManagerRoles.has(currentRole());
+}
+
 function cleanText(text) {
   return (text || "")
     .replace(/\s+/g, " ")
     .replace(/\s+([,.;:])/g, "$1")
     .trim();
+}
+
+function splitLines(text) {
+  return text.split(/\n/).map((line) => line.trim()).filter(Boolean);
 }
 
 function recipeTitle(recipe, language = els.languageSelect.value) {
@@ -120,11 +147,20 @@ function renderArray(container, items, emptyText) {
   });
 }
 
+function updateSourceMeta(message = "") {
+  const source = backendReady || requireAuth ? "Supabase database" : appData.meta?.source || "Local data";
+  const sourceSize = requireAuth && !backendReady
+    ? "login required"
+    : appData.meta?.totalPages
+      ? `${appData.meta.totalPages} pages`
+      : `${appData.meta?.totalParagraphs || 0} Word paragraphs`;
+  els.sourceMeta.textContent = [source, backendReady ? "live" : sourceSize, appVersion, message].filter(Boolean).join(" / ");
+}
+
 function renderUser() {
   if (currentUser) {
     const label = currentProfile?.display_name || currentUser.email || "Signed in";
-    const role = currentProfile?.role || "viewer";
-    els.userBadge.textContent = `${label} / ${role}`;
+    els.userBadge.textContent = `${label} / ${currentRole()}`;
     els.loginButton.textContent = "Sign out";
   } else if (supabaseClient) {
     els.userBadge.textContent = backendReady ? "Guest / database connected" : "Guest / database";
@@ -133,7 +169,10 @@ function renderUser() {
     els.userBadge.textContent = "Guest / local backup";
     els.loginButton.textContent = "Sign in";
   }
-  els.editButton.disabled = false;
+
+  els.editButton.disabled = !canEditRecipes();
+  els.editButton.title = canEditRecipes() ? "" : "Ask an owner or manager to give this user edit access.";
+  els.manageUsersButton.hidden = !canManageUsers();
 }
 
 function renderFilters() {
@@ -145,19 +184,10 @@ function renderFilters() {
   updateSourceMeta();
 }
 
-function updateSourceMeta(message = "") {
-  const source = backendReady || requireAuth ? "Supabase database" : appData.meta?.source || "Local data";
-  const sourceSize = requireAuth && !backendReady
-    ? "login required"
-    : appData.meta?.totalPages
-    ? `${appData.meta.totalPages} pages`
-    : `${appData.meta?.totalParagraphs || 0} Word paragraphs`;
-  els.sourceMeta.textContent = [source, backendReady ? "live" : sourceSize, appVersion, message].filter(Boolean).join(" / ");
-}
-
 function filteredRecipes() {
   const query = els.searchInput.value.trim().toLowerCase();
   const category = els.categorySelect.value;
+  const status = els.statusSelect.value;
   return appData.recipes.filter((recipe) => {
     const haystack = [
       recipe.number,
@@ -167,7 +197,6 @@ function filteredRecipes() {
       recipe.category,
       recipe.categoryHu,
       recipe.categoryZh,
-      recipe.content,
       ...(recipe.ingredients || []),
       ...(recipe.ingredientsEn || []),
       ...(recipe.ingredientsZh || []),
@@ -175,7 +204,11 @@ function filteredRecipes() {
       ...(recipe.methodEn || []),
       ...(recipe.methodZh || []),
     ].join(" ").toLowerCase();
-    return (!query || haystack.includes(query)) && (category === "All" || recipe.category === category);
+    return (
+      (!query || haystack.includes(query)) &&
+      (category === "All" || recipe.category === category) &&
+      (status === "All" || recipe.status === status)
+    );
   });
 }
 
@@ -183,7 +216,7 @@ function renderList() {
   const recipes = filteredRecipes();
   if (!recipes.some((recipe) => recipe.id === selectedId)) selectedId = recipes[0]?.id || appData.recipes[0]?.id;
   if (!recipes.length) {
-    els.recipeList.innerHTML = "<p class=\"login-note\">Sign in to load recipes from the database.</p>";
+    els.recipeList.innerHTML = "<p class=\"login-note\">No recipes match the current filters.</p>";
     return;
   }
   els.recipeList.innerHTML = recipes.map((recipe) => `
@@ -197,20 +230,20 @@ function renderList() {
 function renderDetail() {
   const recipe = appData.recipes.find((item) => item.id === selectedId) || appData.recipes[0];
   if (!recipe) {
-    els.recipeTitle.textContent = "Sign in required";
+    els.recipeTitle.textContent = currentUser ? "No recipe selected" : "Sign in required";
     els.recipeNumber.textContent = "-";
     els.recipeCategory.textContent = "-";
-    els.recipeStatus.textContent = "Locked";
+    els.recipeStatus.textContent = currentUser ? "No data" : "Locked";
     els.recipePages.textContent = "-";
     els.ingredientCount.textContent = "0 items";
     els.historyCount.textContent = "0 entries";
-    renderArray(els.ingredientsList, [], "Sign in to view ingredients.");
-    renderArray(els.ingredientsHuList, [], "Sign in to view Hungarian source ingredients.");
-    renderArray(els.ingredientsZhList, [], "Sign in to view Chinese ingredients.");
-    els.englishText.textContent = "Sign in to view steps.";
-    els.sourceText.textContent = "Sign in to view steps.";
-    els.chineseText.textContent = "Sign in to view steps.";
-    els.historyList.innerHTML = "<p class=\"login-note\">No database session yet.</p>";
+    renderArray(els.ingredientsList, [], currentUser ? "No ingredients loaded." : "Sign in to view ingredients.");
+    renderArray(els.ingredientsHuList, [], currentUser ? "No Hungarian source loaded." : "Sign in to view Hungarian source ingredients.");
+    renderArray(els.ingredientsZhList, [], currentUser ? "No Chinese translation loaded." : "Sign in to view Chinese ingredients.");
+    els.englishText.textContent = currentUser ? "No steps loaded." : "Sign in to view steps.";
+    els.sourceText.textContent = currentUser ? "No steps loaded." : "Sign in to view steps.";
+    els.chineseText.textContent = currentUser ? "No steps loaded." : "Sign in to view steps.";
+    els.historyList.innerHTML = "<p class=\"login-note\">No changes recorded yet.</p>";
     return;
   }
 
@@ -227,7 +260,7 @@ function renderDetail() {
   els.ingredientCount.textContent = `${ingredients.length} items`;
   els.historyCount.textContent = `${history.length} entries`;
 
-  renderArray(els.ingredientsList, ingredients, "No ingredients have been cleaned yet.");
+  renderArray(els.ingredientsList, ingredients, "No English ingredients have been cleaned yet.");
   renderArray(els.ingredientsHuList, ingredientsHu, "No Hungarian source ingredients have been found yet.");
   renderArray(els.ingredientsZhList, ingredientsZh, "No Chinese ingredients have been cleaned yet.");
   els.englishText.textContent = formatSteps(stepsFor(recipe, "en"), "No English steps have been cleaned yet.");
@@ -272,7 +305,11 @@ async function handleLoginButton() {
     await supabaseClient.auth.signOut();
     currentUser = null;
     currentProfile = null;
+    appData = { meta: {}, categories: [], recipes: [] };
+    backendReady = false;
+    renderFilters();
     render();
+    updateSourceMeta("please sign in");
     return;
   }
   openLogin();
@@ -287,10 +324,10 @@ async function loadCurrentUser() {
 
   const { data: profile } = await supabaseClient
     .from("profiles")
-    .select("display_name, role")
+    .select("id, display_name, role")
     .eq("id", currentUser.id)
     .maybeSingle();
-  currentProfile = profile || { display_name: currentUser.email, role: "viewer" };
+  currentProfile = profile || { id: currentUser.id, display_name: currentUser.email, role: "viewer" };
 }
 
 async function saveLogin() {
@@ -324,6 +361,7 @@ async function saveLogin() {
   }
 
   await loadCurrentUser();
+  await loadRecipesFromSupabase();
   closeModal(els.loginDialog);
   render();
 }
@@ -333,6 +371,10 @@ function openEditor() {
     openLogin();
     return;
   }
+  if (!canEditRecipes()) {
+    updateSourceMeta("this user is read only");
+    return;
+  }
 
   const recipe = appData.recipes.find((item) => item.id === selectedId);
   if (!recipe) return;
@@ -340,7 +382,9 @@ function openEditor() {
   els.editTitleEn.value = recipe.titleEn || "";
   els.editTitleHu.value = recipe.title || "";
   els.editTitleZh.value = recipe.titleZh || "";
-  els.editIngredients.value = (recipe.ingredientsEn || recipe.ingredients || []).join("\n");
+  els.editIngredients.value = (recipe.ingredientsEn || []).join("\n");
+  els.editIngredientsHu.value = (recipe.ingredients || []).join("\n");
+  els.editIngredientsZh.value = (recipe.ingredientsZh || []).join("\n");
   els.editMethod.value = stepsFor(recipe, "en").join("\n");
   els.editHungarianNotes.value = stepsFor(recipe, "hu").join("\n");
   els.editChineseNotes.value = stepsFor(recipe, "zh").join("\n");
@@ -358,7 +402,7 @@ function updateLocalRecipe(recipe, next) {
 
 async function saveEditor() {
   const recipe = appData.recipes.find((item) => item.id === selectedId);
-  if (!recipe) return;
+  if (!recipe || !canEditRecipes()) return;
 
   const now = new Date().toISOString();
   const summary = els.editSummary.value.trim() || "Updated recipe text";
@@ -366,10 +410,12 @@ async function saveEditor() {
     titleEn: els.editTitleEn.value.trim() || recipe.titleEn,
     title: els.editTitleHu.value.trim() || recipe.title,
     titleZh: els.editTitleZh.value.trim() || recipe.titleZh,
-    ingredientsEn: els.editIngredients.value.split(/\n/).map((line) => line.trim()).filter(Boolean),
-    methodEn: els.editMethod.value.split(/\n/).map((line) => line.trim()).filter(Boolean),
-    method: els.editHungarianNotes.value.split(/\n/).map((line) => line.trim()).filter(Boolean),
-    methodZh: els.editChineseNotes.value.split(/\n/).map((line) => line.trim()).filter(Boolean),
+    ingredientsEn: splitLines(els.editIngredients.value),
+    ingredients: splitLines(els.editIngredientsHu.value),
+    ingredientsZh: splitLines(els.editIngredientsZh.value),
+    methodEn: splitLines(els.editMethod.value),
+    method: splitLines(els.editHungarianNotes.value),
+    methodZh: splitLines(els.editChineseNotes.value),
     status: "reviewed",
     updatedAt: now.slice(0, 10),
     summary,
@@ -377,11 +423,11 @@ async function saveEditor() {
 
   els.saveEdit.disabled = true;
   if (backendReady && supabaseClient && recipe.dbId && currentUser) {
-    const snapshot = { recipe, next };
+    const snapshot = { before: recipe, after: next };
     const updates = [
       { lang: "en", title: next.titleEn, ingredients: next.ingredientsEn, steps: next.methodEn },
-      { lang: "hu", title: next.title, ingredients: recipe.ingredients || [], steps: next.method },
-      { lang: "zh", title: next.titleZh, ingredients: recipe.ingredientsZh || [], steps: next.methodZh },
+      { lang: "hu", title: next.title, ingredients: next.ingredients, steps: next.method },
+      { lang: "zh", title: next.titleZh, ingredients: next.ingredientsZh, steps: next.methodZh },
     ];
 
     const { error: recipeError } = await supabaseClient
@@ -462,13 +508,13 @@ function recipeFromRow(row, versions) {
       .map((version) => ({
         summary: version.change_summary || "Updated recipe",
         date: String(version.created_at || "").slice(0, 10),
-        user: version.changed_by || "Supabase user",
+        user: version.profile_name || version.changed_by || "Supabase user",
       })),
   };
 }
 
 async function loadRecipesFromSupabase() {
-  if (!supabaseClient || loadingBackend) return;
+  if (!supabaseClient || loadingBackend || !currentUser) return;
   loadingBackend = true;
   updateSourceMeta("loading database");
 
@@ -507,6 +553,55 @@ async function loadRecipesFromSupabase() {
   render();
 }
 
+async function openUsers() {
+  if (!canManageUsers()) return;
+  els.usersNote.textContent = canManageUsers()
+    ? "Change roles carefully. Viewers can read only; kitchen and translator can edit recipes; managers can also review users."
+    : "This user cannot manage users.";
+  openModal(els.usersDialog);
+  await loadUsers();
+}
+
+async function loadUsers() {
+  if (!supabaseClient || !canManageUsers()) return;
+  els.usersList.innerHTML = "<p class=\"login-note\">Loading users...</p>";
+  const { data: profiles, error } = await supabaseClient
+    .from("profiles")
+    .select("id, display_name, role, created_at")
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    els.usersList.innerHTML = `<p class="login-note">Could not load users: ${error.message}</p>`;
+    return;
+  }
+
+  els.usersList.innerHTML = (profiles || []).map((profile) => `
+    <article class="user-row" data-user-id="${profile.id}">
+      <div>
+        <strong>${profile.display_name || "Unnamed user"}</strong>
+        <span>${profile.id}</span>
+      </div>
+      <select ${currentRole() !== "owner" ? "disabled" : ""}>
+        ${["viewer", "translator", "kitchen", "manager", "owner"].map((role) => `
+          <option value="${role}" ${profile.role === role ? "selected" : ""}>${role}</option>
+        `).join("")}
+      </select>
+    </article>
+  `).join("");
+}
+
+async function updateUserRole(event) {
+  const select = event.target.closest(".user-row select");
+  if (!select || currentRole() !== "owner") return;
+  const row = select.closest(".user-row");
+  const id = row.dataset.userId;
+  const role = select.value;
+  const { error } = await supabaseClient.from("profiles").update({ role }).eq("id", id);
+  els.usersNote.textContent = error ? `Could not update role: ${error.message}` : "Role updated.";
+  if (id === currentUser?.id) await loadCurrentUser();
+  renderUser();
+}
+
 async function initBackend() {
   if (!supabaseClient) return;
   await loadCurrentUser();
@@ -531,8 +626,12 @@ els.recipeList.addEventListener("click", (event) => {
 
 els.searchInput.addEventListener("input", render);
 els.categorySelect.addEventListener("change", render);
+els.statusSelect.addEventListener("change", render);
 els.languageSelect.addEventListener("change", render);
 els.loginButton.addEventListener("click", handleLoginButton);
+els.manageUsersButton.addEventListener("click", openUsers);
+els.refreshUsers.addEventListener("click", loadUsers);
+els.usersList.addEventListener("change", updateUserRole);
 els.saveLogin.addEventListener("click", saveLogin);
 els.editButton.addEventListener("click", openEditor);
 els.saveEdit.addEventListener("click", saveEditor);

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>101 Bistro Recipe Wiki</title>
-    <link rel="stylesheet" href="styles.css?v=supabase1" />
+    <link rel="stylesheet" href="styles.css?v=supabase2" />
   </head>
   <body>
     <main class="shell">
@@ -35,6 +35,16 @@
             <span>Category</span>
             <select id="categorySelect"></select>
           </label>
+          <label>
+            <span>Status</span>
+            <select id="statusSelect">
+              <option value="All">All</option>
+              <option value="needs_review">Needs review</option>
+              <option value="reviewed">Reviewed</option>
+              <option value="machine-translated">Machine translated</option>
+              <option value="imported">Imported</option>
+            </select>
+          </label>
         </div>
 
         <nav id="recipeList" class="recipe-list"></nav>
@@ -49,6 +59,7 @@
           <div class="actions">
             <span id="userBadge" class="user-badge"></span>
             <button id="loginButton" type="button">Sign in</button>
+            <button id="manageUsersButton" type="button">Users</button>
             <button id="exportButton" type="button">Export data</button>
             <button id="editButton" type="button">Edit recipe</button>
           </div>
@@ -144,11 +155,19 @@
           <input id="editTitleZh" />
         </label>
         <label>
-          English ingredients, one per line
+          English ingredients
           <textarea id="editIngredients" rows="7"></textarea>
         </label>
         <label>
-          English steps, one per line
+          Hungarian source ingredients
+          <textarea id="editIngredientsHu" rows="7"></textarea>
+        </label>
+        <label>
+          Chinese ingredients
+          <textarea id="editIngredientsZh" rows="7"></textarea>
+        </label>
+        <label>
+          English steps
           <textarea id="editMethod" rows="7"></textarea>
         </label>
         <label>
@@ -166,6 +185,21 @@
         <menu>
           <button data-close="editDialog" type="button">Cancel</button>
           <button id="saveEdit" type="button">Save changes</button>
+        </menu>
+      </form>
+    </div>
+
+    <div id="usersDialog" class="modal" hidden>
+      <form class="editor">
+        <header>
+          <h3>Users</h3>
+          <button class="close-modal" data-close="usersDialog" type="button" aria-label="Close">x</button>
+        </header>
+        <p id="usersNote" class="login-note">Owners and managers can review users. Only owners should change roles.</p>
+        <div id="usersList" class="user-list"></div>
+        <menu>
+          <button data-close="usersDialog" type="button">Close</button>
+          <button id="refreshUsers" type="button">Refresh</button>
         </menu>
       </form>
     </div>
@@ -200,6 +234,6 @@
       };
     </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="app.js?v=supabase1"></script>
+    <script src="app.js?v=supabase2"></script>
   </body>
 </html>
